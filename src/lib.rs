@@ -128,25 +128,35 @@ impl AnySlab {
             from: key,
             to: key + mem::size_of::<T>(),
         };
-        if let Some((l_idx, l_hole)) = self
-            .holes
-            .iter_mut()
-            .enumerate()
-            .find(|(_, hole)| hole.to == key)
         {
-            new_hole.from = l_hole.from;
-            self.holes.swap_remove(l_idx);
-            println!("FUSE LEFT");
-        }
-        if let Some((r_idx, r_hole)) = self
-            .holes
-            .iter_mut()
-            .enumerate()
-            .find(|(_, hole)| hole.from == key_end)
-        {
-            new_hole.to = r_hole.to;
-            self.holes.swap_remove(r_idx);
-            println!("FUSE RIGHT");
+            // 2cont. fuse holes with left & right
+            let mut lid = None;
+            let mut rid = None;
+            for (i, hole) in self.holes.iter().enumerate() {
+                if hole.to == key {
+                    lid = Some(i);
+                    if rid.is_some() {break}
+                } else if hole.from == key_end {
+                    rid = Some(i);
+                    if lid.is_some() {break}
+                }
+            }
+            if let Some(lid) = lid {
+                let l_hole: &mut Hole = unsafe { self.holes.get_unchecked_mut(lid) };
+                new_hole.from = l_hole.from;
+                self.holes.swap_remove(lid);
+                if let Some(ref mut rid) = rid {
+                    if *rid == self.holes.len() {
+                        // rid got swapped into LID's position!
+                        *rid = lid;
+                    }
+                }
+            }
+            if let Some(rid) = rid {
+                let r_hole: &mut Hole = unsafe { self.holes.get_unchecked_mut(rid) };
+                new_hole.to = r_hole.to;
+                self.holes.swap_remove(rid);
+            }
         }
         self.holes.push(new_hole);
 
